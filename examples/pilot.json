@@ -1,0 +1,24 @@
+{
+  "phase": "pilot",
+  "fixtures": "fixtures/pilot",
+  "fixture_source": "generated",
+  "fixture_seed": 84103,
+  "tasks": ["TR02-CTRL-002"],
+  "seeds": [47],
+  "conditions": ["original", "permutation_relu_scale"],
+  "methods": ["no_edit", "random", "greedy", "es", "claude"],
+  "candidate_cap": 2,
+  "dev_per_region": 8,
+  "heldout_per_region": 16,
+  "editor": {
+    "model": "claude-haiku-5-5",
+    "effort": "low",
+    "max_calls": 2,
+    "retries": 0,
+    "timeout_seconds": 120,
+    "max_output_bytes": 1000000,
+    "max_output_tokens": 4096,
+    "max_api_equivalent_usd_per_call": 0.2,
+    "billing_assumption": "extra_usage_disabled"
+  }
+}

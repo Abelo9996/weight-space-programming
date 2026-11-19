@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, cite the version you ran."
+type: software
+title: "Weight-Space Programming"
+authors:
+  - family-names: Yagubyan
+    given-names: Abel
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/Abelo9996/weight-space-programming"

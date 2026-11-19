@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "weightspace"
+version = "0.1.0"
+description = "Research harness for symmetry audits and budget-matched weight editing"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE", "src/weightspace/_vendor/*LICENSE*"]
+authors = [{name = "Abel Yagubyan"}]
+dependencies = ["numpy>=1.26"]
+
+[project.optional-dependencies]
+transforms = ["torch>=2.7"]
+prepare = ["torch>=2.7"]
+dev = ["pytest>=8", "build>=1.2", "torch>=2.7"]
+
+[project.scripts]
+weightspace = "weightspace.cli:main"
+
+[project.urls]
+Repository = "https://github.com/Abelo9996/weight-space-programming"
+Issues = "https://github.com/Abelo9996/weight-space-programming/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["weightspace", "weightspace.*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+"weightspace._vendor" = ["*LICENSE*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

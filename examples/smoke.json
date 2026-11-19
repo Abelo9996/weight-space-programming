@@ -1,0 +1,13 @@
+{
+  "phase": "smoke",
+  "fixtures": "fixtures/smoke",
+  "fixture_source": "generated",
+  "fixture_seed": 0,
+  "tasks": ["TR02-CTRL-002"],
+  "seeds": [11, 23],
+  "conditions": ["original", "permutation_relu_scale"],
+  "methods": ["no_edit", "random", "greedy", "es"],
+  "candidate_cap": 5,
+  "dev_per_region": 4,
+  "heldout_per_region": 8
+}
