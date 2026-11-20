@@ -111,15 +111,15 @@ def decode_last_block(prefix, block, suffix, directory):
     short_index += crc32_bytes(short_index)
     footer_body = struct.pack("<I", len(short_index) // 4 - 1) + footer[8:10]
 
-    reconstructed = directory / "block.xz"
-    with reconstructed.open("wb") as target, prefix.open("rb") as first, block.open("rb") as source:
-        target.write(first.read(12))
-        shutil.copyfileobj(source, target)
-        target.write(short_index + crc32_bytes(footer_body) + footer_body + b"YZ")
-
     decoded = directory / "block.tar-slice"
-    with lzma.open(reconstructed) as source, decoded.open("wb") as target:
-        shutil.copyfileobj(source, target)
+    with tempfile.TemporaryFile(mode="w+b", dir=directory) as reconstructed:
+        with prefix.open("rb") as first, block.open("rb") as source:
+            reconstructed.write(first.read(12))
+            shutil.copyfileobj(source, reconstructed)
+        reconstructed.write(short_index + crc32_bytes(footer_body) + footer_body + b"YZ")
+        reconstructed.seek(0)
+        with lzma.open(reconstructed) as source, decoded.open("wb") as target:
+            shutil.copyfileobj(source, target)
     if decoded.stat().st_size != uncompressed:
         raise ValueError("unexpected decoded XZ block length")
     return decoded, offset
