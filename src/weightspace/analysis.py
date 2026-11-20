@@ -8,10 +8,11 @@ from statistics import mean, stdev
 import numpy as np
 
 from .artifacts import json_digest
+from .codex_editor import MODEL_EVIDENCE
 from .edits import EditLimits, apply_edits
-from .experiment import ExperimentConfig, planned_cells
+from .experiment import EDITOR_IMPLEMENTATIONS, ExperimentConfig, planned_cells
 from .policies import load_policy, policy_digest
-from .search import SEARCH_METHODS
+from .search import EDITOR_METHODS, SEARCH_METHODS
 
 
 METRICS = ("objective", "failure_success", "normal_success")
@@ -30,7 +31,7 @@ def _one(events, kind):
     return matches[0]
 
 
-def _read_run(input_dir, cell, config_hash, limits):
+def _read_run(input_dir, cell, config_hash, limits, editor_options):
     directory = input_dir / "runs" / cell["run_id"]
     if not directory.is_dir():
         return "missing", "planned run directory is absent", None
@@ -103,16 +104,35 @@ def _read_run(input_dir, cell, config_hash, limits):
         if any(event["sequence"] > selected["sequence"] for event in editor_events):
             raise ValueError("editor ran after selection")
         model_identity = None
-        if cell["method"] == "claude":
+        method = cell["method"]
+        if method in EDITOR_METHODS:
             preflight = _one(events, "editor_preflight")
             model_identity = (
                 preflight["access"], preflight["cli_version"], preflight["requested_model"], preflight["effort"],
             )
-            if not editor_events or any(
-                event["access"] != model_identity[0] or event["cli_version"] != model_identity[1]
-                or event["reported_models"] != [model_identity[2]] for event in editor_events
+            editor_type, _ = EDITOR_IMPLEMENTATIONS[method]
+            if (
+                model_identity[0] != editor_type.access or model_identity[2] != editor_options.model
+                or model_identity[3] != editor_options.effort
+                or not 1 <= len(editor_events) <= editor_options.max_calls
+                or any(
+                    event["access"] != model_identity[0] or event["cli_version"] != model_identity[1]
+                    or event["requested_model"] != model_identity[2] for event in editor_events
+                )
             ):
                 raise ValueError("editor run has inconsistent provenance")
+            if method == "codex":
+                if (
+                    model_identity[1] != editor_options.cli_version
+                    or preflight["model_evidence"] != MODEL_EVIDENCE
+                    or any(
+                        event["reported_models"] != [] or event["model_evidence"] != MODEL_EVIDENCE
+                        or event["stream_error"] is not None for event in editor_events
+                    )
+                ):
+                    raise ValueError("Codex run has inconsistent CLI or model provenance")
+            elif any(event["reported_models"] != [model_identity[2]] for event in editor_events):
+                raise ValueError("Claude run has inconsistent reported models")
         return "completed", None, {
             **completed, "provenance": checkpoint["provenance"], "attempts": dict(attempts),
             "editor_calls": len(editor_events), "editor_identity": model_identity,
@@ -217,8 +237,9 @@ def summarize(input_dir, *, bootstrap_replicates=2000, bootstrap_seed=20261119):
     table, availability = {}, []
     counts = dict.fromkeys(("completed", "failed", "incomplete", "missing", "invalid"), 0)
     limits = EditLimits(**config.edit_limits)
+    editor_options = config.editor_options() if config.editor_method else None
     for cell in cells:
-        status, reason, data = _read_run(input_dir, cell, config_hash, limits)
+        status, reason, data = _read_run(input_dir, cell, config_hash, limits, editor_options)
         counts[status] += 1
         availability.append({**cell, "status": status, "reason": reason})
         if data is not None:
@@ -262,7 +283,7 @@ def summarize(input_dir, *, bootstrap_replicates=2000, bootstrap_seed=20261119):
                 if method != "no_edit" and "no_edit" in config.methods:
                     targets.append(("method_minus_no_edit", [(condition, method), (condition, "no_edit")], False, False))
                 searches = [search for search in SEARCH_METHODS if search in config.methods]
-                if method == "claude" and searches:
+                if method in EDITOR_METHODS and searches:
                     for search in searches:
                         targets.append(("editor_minus_search", [(condition, method), (condition, search)], False, False))
                     if len(searches) > 1:

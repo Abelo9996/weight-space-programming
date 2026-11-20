@@ -1,0 +1,25 @@
+{
+  "phase": "pilot",
+  "fixtures": "fixtures/codex-pilot",
+  "fixture_source": "generated",
+  "fixture_seed": 90217,
+  "tasks": ["TR02-CTRL-002"],
+  "seeds": [41],
+  "conditions": ["original", "permutation_relu_scale"],
+  "methods": ["no_edit", "random", "greedy", "es", "codex"],
+  "candidate_cap": 2,
+  "dev_per_region": 8,
+  "heldout_per_region": 100,
+  "editor": {
+    "model": "gpt-6.2-sol",
+    "cli_version": "codex-cli 0.169.0",
+    "effort": "low",
+    "max_calls": 2,
+    "retries": 0,
+    "timeout_seconds": 90,
+    "max_output_bytes": 131072,
+    "max_observed_input_tokens": 120000,
+    "max_observed_output_tokens": 2048,
+    "billing_assumption": "subscription_only"
+  }
+}

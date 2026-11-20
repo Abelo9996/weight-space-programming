@@ -11,15 +11,17 @@ import numpy as np
 
 from .artifacts import RunJournal, canonical_json, json_digest
 from .broker import BudgetBroker
-from .editors import ClaudeEditor, ClaudeOptions, run_editor
+from .codex_editor import CodexEditor, CodexOptions
+from .editors import ClaudeEditor, ClaudeOptions, EditorError, InvalidProposal, run_editor
 from .edits import EditLimits
 from .policies import forward, policy_digest
-from .search import METHODS, run_search
+from .search import EDITOR_METHODS, METHODS, run_search
 from .tasks import FIXTURE_FORMAT, TASKS, load_task
 
 
 CONDITIONS = ("original", "permutation", "relu_scale", "permutation_relu_scale")
 PHASES = ("smoke", "pilot", "study")
+EDITOR_IMPLEMENTATIONS = {"claude": (ClaudeEditor, ClaudeOptions), "codex": (CodexEditor, CodexOptions)}
 
 
 @dataclass(frozen=True)
@@ -72,12 +74,22 @@ class ExperimentConfig:
         if not isinstance(self.edit_limits, dict):
             raise ValueError("edit_limits must be an object")
         EditLimits(**self.edit_limits)
-        if "claude" in self.methods:
+        if sum(method in EDITOR_METHODS for method in self.methods) > 1:
+            raise ValueError("use one native editor per comparison")
+        if self.editor_method:
             if not isinstance(self.editor, dict):
-                raise ValueError("Claude method requires an editor settings object")
-            ClaudeOptions(**self.editor)
+                raise ValueError("the native editor method requires an editor settings object")
+            self.editor_options()
         elif self.editor is not None:
-            raise ValueError("editor settings require the Claude method")
+            raise ValueError("editor settings require a native editor method")
+
+    @property
+    def editor_method(self):
+        return next((method for method in self.methods if method in EDITOR_METHODS), None)
+
+    def editor_options(self):
+        _, options = EDITOR_IMPLEMENTATIONS[self.editor_method]
+        return options(**self.editor)
 
 
 def load_config(path):
@@ -191,8 +203,9 @@ def _run_cell(config, cell, journal, task, policy, transform, *, allow_live):
         initial = broker.dev.probe([])
         if initial.status != "scored":
             raise RuntimeError(f"starting checkpoint could not be scored: {initial.status}")
-        if cell["method"] == "claude":
-            editor = ClaudeEditor(ClaudeOptions(**config.editor), journal, allow_live=allow_live)
+        if cell["method"] in EDITOR_METHODS:
+            editor_type, _ = EDITOR_IMPLEMENTATIONS[cell["method"]]
+            editor = editor_type(config.editor_options(), journal, allow_live=allow_live)
             selected = run_editor(broker.dev, initial, editor)
         else:
             selected = run_search(
@@ -227,29 +240,33 @@ def _run_cell(config, cell, journal, task, policy, transform, *, allow_live):
 
 def run_experiment(config, fixtures, output, *, allow_live=False):
     """Execute all cells and leave an auditable failure record for each bad cell."""
-    if "claude" in config.methods and not allow_live:
-        raise ValueError("the config includes Claude; pass --allow-live-editor to run it")
+    editor_method = config.editor_method
+    if editor_method and not allow_live:
+        raise ValueError("pass --allow-live-editor to run the configured native editor")
     output.mkdir(parents=True, exist_ok=False)
     config_data = asdict(config)
     config_hash = json_digest(config_data)
     cells = planned_cells(config)
     launch_bounds = None
-    if "claude" in config.methods:
-        options = ClaudeOptions(**config.editor)
-        max_launches = options.max_calls * sum(cell["method"] == "claude" for cell in cells)
+    if editor_method:
+        options = config.editor_options()
+        max_launches = options.max_calls * sum(cell["method"] == editor_method for cell in cells)
         launch_bounds = {
             "editor_cli_launches_upper_bound": max_launches,
-            "sum_of_cli_api_equivalent_thresholds_usd": max_launches * options.max_api_equivalent_usd_per_call,
             "billing_assumption": options.billing_assumption, "actual_charge_usd": None,
             "effective_options": asdict(options),
         }
+        if editor_method == "claude":
+            launch_bounds["sum_of_cli_api_equivalent_thresholds_usd"] = (
+                max_launches * options.max_api_equivalent_usd_per_call
+            )
     _exclusive_json(output / "experiment.json", {
         "schema_version": 1, "config": config_data, "config_sha256": config_hash,
         "cells": cells, "python_version": platform.python_version(), "numpy_version": np.__version__,
         "source": _source_provenance(),
         "live_editor_launch_bounds": launch_bounds,
     })
-    completed = 0
+    completed = failed = 0
     for task_id in config.tasks:
         for seed in config.seeds:
             try:
@@ -279,6 +296,15 @@ def run_experiment(config, fixtures, output, *, allow_live=False):
                         _run_cell(config, cell, journal, task, policy, transform, allow_live=allow_live)
                     except Exception as error:
                         journal.append("run_failed", error_type=type(error).__name__, reason=str(error))
+                        failed += 1
+                        if (
+                            cell["method"] == "codex" and isinstance(error, EditorError)
+                            and not isinstance(error, InvalidProposal)
+                        ):
+                            return {
+                                "phase": config.phase, "expected": len(cells), "completed": completed,
+                                "failed": failed, "not_started": len(cells) - completed - failed,
+                            }
                     else:
                         completed += 1
-    return {"phase": config.phase, "expected": len(cells), "completed": completed, "failed": len(cells) - completed}
+    return {"phase": config.phase, "expected": len(cells), "completed": completed, "failed": failed}

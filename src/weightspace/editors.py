@@ -1,4 +1,4 @@
-"""Tool-free, stateless Claude Code subscription proposals on broker dev feedback."""
+"""Shared editor protocol and the Claude Code subscription adapter."""
 
 from dataclasses import asdict, dataclass
 from hashlib import sha256
@@ -71,6 +71,9 @@ class ProcessResult:
     stderr: str
     returncode: int | None
     interruption: str | None
+    invalid_utf8: bool = False
+    stdout_sha256: str | None = None
+    stderr_sha256: str | None = None
 
 
 def subscription_environment(output_tokens):
@@ -150,10 +153,16 @@ def run_process(command, *, prompt, cwd, env, timeout, output_cap):
                 except ProcessLookupError:
                     pass
                 process.wait()
+        try:
+            stdout_text, stderr_text = stdout.decode("utf-8"), stderr.decode("utf-8")
+            invalid_utf8 = False
+        except UnicodeDecodeError:
+            stdout_text = stdout.decode("utf-8", errors="replace")
+            stderr_text = stderr.decode("utf-8", errors="replace")
+            invalid_utf8 = True
         return ProcessResult(
-            stdout.decode("utf-8", errors="replace"),
-            stderr.decode("utf-8", errors="replace"),
-            process.returncode, interruption,
+            stdout_text, stderr_text, process.returncode, interruption, invalid_utf8,
+            sha256(stdout).hexdigest(), sha256(stderr).hexdigest(),
         )
 
 
@@ -331,6 +340,8 @@ def _check_stream(events, malformed, inits, results, assistant, models, options)
 class ClaudeEditor:
     """Own the CLI preflight and append the full scientific turn evidence."""
 
+    access = "claude_subscription_cli"
+
     def __init__(self, options, journal, *, allow_live=False, executable="claude"):
         if not allow_live:
             raise EditorError("Claude editor requires explicit live opt-in")
@@ -367,7 +378,7 @@ class ClaudeEditor:
         ):
             raise EditorError("Claude Code must have a first-party Claude subscription login")
         self.journal.append(
-            "editor_preflight", cli_version=self.version, access="claude_subscription_cli",
+            "editor_preflight", cli_version=self.version, access=self.access,
             requested_model=self.options.model, effort=self.options.effort,
             subscription_type=account.get("subscriptionType"), actual_charge_usd=None,
             billing_assumption=self.options.billing_assumption,
@@ -403,7 +414,7 @@ class ClaudeEditor:
         events, malformed, inits, results, assistant, models = _stream_fields(process.stdout)
         result = results[-1] if results else {}
         self.journal.append(
-            "editor_turn", call=call, attempt=attempt, access="claude_subscription_cli",
+            "editor_turn", call=call, attempt=attempt, access=self.access,
             requested_model=self.options.model, reported_models=models,
             cli_version=self.version, command=command, system_prompt=SYSTEM_PROMPT,
             prompt=prompt, prompt_sha256=sha256(prompt.encode()).hexdigest(),
@@ -491,4 +502,4 @@ def run_editor(dev, initial, editor):
         history.append(feedback(candidate, proposal["ops"]))
         if candidate.status == "scored":
             scored.add(candidate.candidate_id)
-    raise EditorError("Claude did not select a scored candidate within its call cap")
+    raise EditorError("editor did not select a scored candidate within its call cap")

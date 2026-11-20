@@ -4,8 +4,9 @@ import json
 import numpy as np
 import pytest
 
-from weightspace import broker, experiment
+from weightspace import broker, codex_editor, experiment
 from weightspace.analysis import _bootstrap, summarize
+from weightspace.editors import ProcessResult
 from weightspace.policies import policy_digest
 from weightspace.tasks import Score, StartSplit, TaskBundle, TaskSpec
 
@@ -124,6 +125,74 @@ def test_editor_bound_counts_cli_launches_and_reports_thresholds(tmp_path, monke
     assert bounds["editor_cli_launches_upper_bound"] == 6
     assert bounds["sum_of_cli_api_equivalent_thresholds_usd"] == pytest.approx(1.2)
     assert bounds["actual_charge_usd"] is None
+
+
+@pytest.mark.parametrize("hard_failure", [False, True])
+def test_codex_edit_experiment_keeps_budget_and_stops_on_hard_cli_failure(tmp_path, monkeypatch, hard_failure):
+    monkeypatch.setattr(experiment, "load_task", stub_task)
+    monkeypatch.setattr(broker, "evaluate_split", stub_score)
+    launches = []
+    operation = {"op": "shift_bias", "layer": "fc0", "neuron": 0, "shift": 0.5}
+
+    def invoke(command, *, prompt, **kwargs):
+        if command[1] == "--version":
+            return ProcessResult("codex-cli 0.169.0", "", 0, None)
+        if command[1] == "login":
+            return ProcessResult("", "Logged in using ChatGPT", 0, None)
+        data = json.loads(prompt)
+        launches.append(data)
+        if hard_failure:
+            return ProcessResult('{"type":"turn.failed"}\n', "rate limit", 1, None)
+        probe = len(data["history"]) == 1
+        response = {"action": "probe", "ops": [operation]} if probe else {"action": "select", "candidate_id": 1}
+        events = [
+            {"type": "thread.started", "thread_id": "mock-experiment"},
+            {"type": "turn.started"},
+            {"type": "item.completed", "item": {"id": "item0", "type": "agent_message", "text": json.dumps(response)}},
+            {"type": "turn.completed", "usage": {
+                "input_tokens": 1200, "cached_input_tokens": 0, "output_tokens": 10,
+                "reasoning_output_tokens": 0,
+            }},
+        ]
+        return ProcessResult("\n".join(map(json.dumps, events)), "", 0, None)
+
+    monkeypatch.setattr(codex_editor, "run_process", invoke)
+    settings = config(methods=("codex", "random"), candidate_cap=2, editor={
+        "model": "gpt-6.2-sol", "cli_version": "codex-cli 0.169.0",
+        "billing_assumption": "subscription_only", "max_calls": 2,
+    })
+    output = tmp_path / "codex"
+    with pytest.raises(ValueError, match="allow-live-editor"):
+        experiment.run_experiment(settings, tmp_path, output)
+    result = experiment.run_experiment(settings, tmp_path, output, allow_live=True)
+    manifest = json.loads((output / "experiment.json").read_text())
+    bounds = manifest["live_editor_launch_bounds"]
+    assert bounds["editor_cli_launches_upper_bound"] == 4
+    assert "sum_of_cli_api_equivalent_thresholds_usd" not in bounds
+    rows = [
+        json.loads(line) for line in
+        (output / "runs" / f"{TASK_ID}.s32.original.codex" / "events.jsonl").read_text().splitlines()
+    ]
+    summary = summarize(output)
+    if hard_failure:
+        assert result == {"phase": "smoke", "expected": 4, "completed": 0, "failed": 1, "not_started": 3}
+        assert len(launches) == 1
+        assert rows[-1]["event"] == "run_failed"
+        assert rows[-2]["event"] == "broker_aborted"
+        assert rows[-2]["budget"]["candidates_used"] == 1
+        assert all(row["event"] != "heldout_result" for row in rows)
+        assert summary["counts"]["failed"] == 1 and summary["counts"]["missing"] == 3
+    else:
+        assert result["completed"] == 4 and len(launches) == 4
+        assert rows[-1]["ops"] == [operation]
+        assert rows[-1]["budget"]["candidates_used"] == 2
+        assert rows[-1]["budget"]["rows_used"] == 14
+        assert rows[-1]["budget"]["rows_reserved"] == 28
+        assert rows[-1]["heldout_rows_used"] == 7
+        assert [data["candidate_slots_remaining"] for data in launches] == [1, 0, 1, 0]
+        assert all("heldout" not in json.dumps(data) for data in launches)
+        assert summary["counts"]["completed"] == 4
+        assert any(entry["comparison"] == "editor_minus_search" for entry in summary["heldout_comparisons"])
 
 
 def test_bootstrap_samples_seed_pairs_instead_of_independent_arms():

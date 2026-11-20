@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from weightspace.edits import EditLimits, apply_edits
-from weightspace.search import METHODS, run_search
+from weightspace.search import SEARCH_METHODS, run_search
 
 
 class Dev:
@@ -30,7 +30,7 @@ class Dev:
         )
 
 
-@pytest.mark.parametrize("method", METHODS[:-1])
+@pytest.mark.parametrize("method", ("no_edit", *SEARCH_METHODS))
 def test_baselines_are_seeded_relative_to_the_same_checkpoint(method):
     left, right = Dev(), Dev()
     result = run_search(method, left, left.probe([]), 3, offspring=3)

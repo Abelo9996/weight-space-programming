@@ -6,7 +6,8 @@ import numpy as np
 
 
 SEARCH_METHODS = ("random", "greedy", "es")
-METHODS = ("no_edit", *SEARCH_METHODS, "claude")
+EDITOR_METHODS = ("claude", "codex")
+METHODS = ("no_edit", *SEARCH_METHODS, *EDITOR_METHODS)
 
 
 def better(candidate, incumbent):

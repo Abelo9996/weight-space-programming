@@ -44,7 +44,25 @@ Methods share candidate and policy-row ceilings. Realized counts can differ beca
 
 ## Optional live editor
 
-A live run uses the Claude Code CLI on Linux or macOS with a first-party subscription login and an explicitly pinned model. The example assumes extra usage is disabled on the subscription. Review the task, call limits, and model in [the pilot config](../examples/pilot.json) before running it.
+Both native adapters use the same proposal protocol, serialized weights, and development feedback. Select one editor and pin its model for all conditions of a comparison. Keep raw prompts and responses local pending review. For an evaluation whose starts must stay private, use a private fixture seed and config until evaluation is complete.
+
+### Codex CLI
+
+The [Codex pilot config](../examples/codex-pilot.json) runs one MountainCar pair. Each editing or search cell has two candidate slots, including the starting checkpoint, so it allows one additional edit. The two Codex cells can launch the CLI a total of four times with zero harness retries. The CLI can retry provider requests internally. The pilot exercises the pipeline with a single paired seed.
+
+```sh
+weightspace prepare --output examples/fixtures/codex-pilot --task TR02-CTRL-002 --seed 90217
+weightspace run --config examples/codex-pilot.json --output runs/codex-pilot --allow-live-editor
+weightspace summarize --input runs/codex-pilot --output runs/codex-pilot/summary.json
+```
+
+The adapter checks the configured CLI version and native ChatGPT login, forces ChatGPT authentication with the built-in OpenAI provider, and filters out environment credentials and endpoint overrides. Each request runs in a fresh working directory. The command skips user configuration and rules, requests disabled shell and connector features, and supplies the shared protocol as replacement instructions. It accepts a single assistant message followed by usage and checks it with the shared strict JSON parser. Stream checks cover activity reported by the CLI. The native process still uses the local OS account and its credential store, system-managed settings may apply, and the model catalog can enable built-in utilities. [Codex CLI reference](https://developers.openai.com/codex/cli/reference) · [Configuration reference](https://developers.openai.com/codex/config-reference)
+
+The journal records the requested model ID, CLI version, observed token usage, and bounded output for accepted proposals. The backend model identity is unavailable in Codex CLI 0.169.0's JSONL. For a rejected stream the journal retains event types, available numeric usage and output digests. Hard CLI failures stop the experiment before the next cell. The configured token limits are acceptance checks applied after the CLI reports usage. The journal records subscription charges as unknown. [Codex 0.169.0 stream types](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/exec/src/exec_events.rs)
+
+### Claude Code CLI
+
+The Claude Code CLI adapter uses a first-party subscription login on Linux or macOS. The example assumes extra usage is disabled on the subscription. Review the task, call limits, and pinned model in [the Claude pilot config](../examples/pilot.json) before running it.
 
 ```sh
 weightspace prepare --output examples/fixtures/pilot --task TR02-CTRL-002 --seed 84103
@@ -52,7 +70,7 @@ weightspace run --config examples/pilot.json --output runs/pilot --allow-live-ed
 weightspace summarize --input runs/pilot --output runs/pilot/summary.json
 ```
 
-The adapter sends serialized weights and development feedback to the model and accepts structured edit or selection requests. It requests an empty tool and connector configuration, checks emitted CLI metadata, logs the requested and reported model identities, and captures bounded raw output and usage for audit. For an evaluation whose starts must stay private, use a private fixture seed and config until evaluation is complete. Keep raw prompts and responses local pending review.
+The adapter requests an empty tool and connector configuration, checks emitted CLI metadata, logs the requested and reported model identities, and captures bounded raw output and usage for audit.
 
 The broker keeps held-out starts and per-episode held-out feedback out of the editor protocol. The CLI starts in a temporary working directory and still runs with the local OS account's permissions. Organization-managed hooks can run even in safe mode. The stream checks cover behavior reported by the CLI, so use a trusted host and verify the applicable managed configuration. Use OS-level isolation for untrusted executable methods. [Claude Code CLI reference](https://code.claude.com/docs/en/cli-reference) · [Managed settings](https://code.claude.com/docs/en/settings)
 
