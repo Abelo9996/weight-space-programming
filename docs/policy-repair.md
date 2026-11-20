@@ -50,15 +50,44 @@ Both native adapters use the same proposal protocol, serialized weights, and dev
 
 The [Codex pilot config](../examples/codex-pilot.json) runs one MountainCar pair. Each editing or search cell has two candidate slots, including the starting checkpoint, so it allows one additional edit. The two Codex cells can launch the CLI a total of four times with zero harness retries. The CLI can retry provider requests internally. The pilot exercises the pipeline with a single paired seed.
 
+Codex 0.169.0 can get its tool mode from the selected model's catalog entry. For a model whose catalog entry requests Code Mode, prepare an explicit Direct-mode catalog override while keeping the execution host disabled. The following offline command copies only the selected model entry from the local cache and adds its file path and hash to a private config. It requires an existing catalog entry for the model. [Codex 0.169.0 tool mode selection](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/core/src/tools/mod.rs)
+
+```sh
+mkdir -p runs
+(
+  umask 077
+  python - <<'PY'
+import hashlib
+import json
+from pathlib import Path
+
+config = json.loads(Path("examples/codex-pilot.json").read_text())
+cache = json.loads((Path.home() / ".codex" / "models_cache.json").read_text())
+model, = (entry for entry in cache["models"] if entry["slug"] == config["editor"]["model"])
+source = Path("runs/codex-model-source.json").resolve()
+descriptor = (json.dumps(model, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
+with source.open("xb") as file:
+    file.write(descriptor)
+config["editor"].update(
+    model_catalog_source=str(source), model_catalog_source_sha256=hashlib.sha256(descriptor).hexdigest(),
+)
+with Path("runs/codex-pilot-config.json").open("x", encoding="utf-8") as file:
+    json.dump(config, file, indent=2)
+PY
+)
+```
+
+The experiment archives the exact source descriptor and the derived catalog once. The derived entry changes only `tool_mode` to `direct`. Both conditions use the same archived catalog and requested provider model. The manifest records both hashes, and the adapter verifies the archive before each launch. Keep the catalog files private.
+
 ```sh
 weightspace prepare --output examples/fixtures/codex-pilot --task TR02-CTRL-002 --seed 90217
-weightspace run --config examples/codex-pilot.json --output runs/codex-pilot --allow-live-editor
+weightspace run --config runs/codex-pilot-config.json --fixtures examples/fixtures/codex-pilot --output runs/codex-pilot --allow-live-editor
 weightspace summarize --input runs/codex-pilot --output runs/codex-pilot/summary.json
 ```
 
 The adapter checks the configured CLI version and native ChatGPT login, forces ChatGPT authentication with the built-in OpenAI provider, and filters out environment credentials and endpoint overrides. Each request runs in a fresh working directory. The command skips user configuration and rules, requests disabled shell and connector features, and supplies the shared protocol as replacement instructions. It accepts a single assistant message followed by usage and checks it with the shared strict JSON parser. Stream checks cover activity reported by the CLI. The native process still uses the local OS account and its credential store, system-managed settings may apply, and the model catalog can enable built-in utilities. [Codex CLI reference](https://developers.openai.com/codex/cli/reference) · [Configuration reference](https://developers.openai.com/codex/config-reference)
 
-The journal records the requested model ID, CLI version, observed token usage, and bounded output for accepted proposals. The backend model identity is unavailable in Codex CLI 0.169.0's JSONL. For a rejected stream the journal retains event types, available numeric usage and output digests. Hard CLI failures stop the experiment before the next cell. The configured token limits are acceptance checks applied after the CLI reports usage. The journal records subscription charges as unknown. [Codex 0.169.0 stream types](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/exec/src/exec_events.rs)
+The private journal records the requested model ID, CLI version, native thread ID when available, observed token usage, and bounded output for accepted proposals. The backend model identity is unavailable in Codex CLI 0.169.0's JSONL. For a rejected stream the journal retains event types, bounded diagnostic previews with recognizable credentials and home paths redacted, available numeric usage and output digests. Review diagnostic previews before sharing them. Hard CLI failures stop the experiment before the next cell. The configured token limits are acceptance checks applied after the CLI reports usage. The journal records subscription charges as unknown. [Codex 0.169.0 stream types](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/exec/src/exec_events.rs)
 
 ### Claude Code CLI
 

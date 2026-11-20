@@ -8,7 +8,7 @@ from statistics import mean, stdev
 import numpy as np
 
 from .artifacts import json_digest
-from .codex_editor import MODEL_EVIDENCE
+from .codex_editor import MODEL_EVIDENCE, catalog_provenance
 from .edits import EditLimits, apply_edits
 from .experiment import EDITOR_IMPLEMENTATIONS, ExperimentConfig, planned_cells
 from .policies import load_policy, policy_digest
@@ -31,7 +31,7 @@ def _one(events, kind):
     return matches[0]
 
 
-def _read_run(input_dir, cell, config_hash, limits, editor_options):
+def _read_run(input_dir, cell, config_hash, limits, editor_options, editor_catalog):
     directory = input_dir / "runs" / cell["run_id"]
     if not directory.is_dir():
         return "missing", "planned run directory is absent", None
@@ -125,8 +125,10 @@ def _read_run(input_dir, cell, config_hash, limits, editor_options):
                 if (
                     model_identity[1] != editor_options.cli_version
                     or preflight["model_evidence"] != MODEL_EVIDENCE
+                    or preflight.get("model_catalog") != editor_catalog
                     or any(
                         event["reported_models"] != [] or event["model_evidence"] != MODEL_EVIDENCE
+                        or event.get("model_catalog") != editor_catalog
                         or event["stream_error"] is not None for event in editor_events
                     )
                 ):
@@ -238,8 +240,14 @@ def summarize(input_dir, *, bootstrap_replicates=2000, bootstrap_seed=20261119):
     counts = dict.fromkeys(("completed", "failed", "incomplete", "missing", "invalid"), 0)
     limits = EditLimits(**config.edit_limits)
     editor_options = config.editor_options() if config.editor_method else None
+    editor_catalog = None
+    if config.editor_method == "codex":
+        editor_catalog = catalog_provenance(editor_options, input_dir)
+        launch_bounds = manifest.get("live_editor_launch_bounds")
+        if not isinstance(launch_bounds, dict) or launch_bounds.get("model_catalog") != editor_catalog:
+            raise ValueError("experiment manifest has inconsistent Codex model catalog provenance")
     for cell in cells:
-        status, reason, data = _read_run(input_dir, cell, config_hash, limits, editor_options)
+        status, reason, data = _read_run(input_dir, cell, config_hash, limits, editor_options, editor_catalog)
         counts[status] += 1
         availability.append({**cell, "status": status, "reason": reason})
         if data is not None:

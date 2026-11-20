@@ -11,7 +11,7 @@ import numpy as np
 
 from .artifacts import RunJournal, canonical_json, json_digest
 from .broker import BudgetBroker
-from .codex_editor import CodexEditor, CodexOptions
+from .codex_editor import CodexEditor, CodexOptions, stage_model_catalog
 from .editors import ClaudeEditor, ClaudeOptions, EditorError, InvalidProposal, run_editor
 from .edits import EditLimits
 from .policies import forward, policy_digest
@@ -190,7 +190,7 @@ def _prepare_pair(config, fixtures, task_id, seed):
     return task
 
 
-def _run_cell(config, cell, journal, task, policy, transform, *, allow_live):
+def _run_cell(config, cell, journal, task, policy, transform, *, allow_live, output):
     digest = _save_policy(journal.path / "starting_policy.npz", policy)
     journal.append(
         "checkpoint", starting_policy_sha256=digest, provenance=task.provenance, transform=transform,
@@ -205,7 +205,8 @@ def _run_cell(config, cell, journal, task, policy, transform, *, allow_live):
             raise RuntimeError(f"starting checkpoint could not be scored: {initial.status}")
         if cell["method"] in EDITOR_METHODS:
             editor_type, _ = EDITOR_IMPLEMENTATIONS[cell["method"]]
-            editor = editor_type(config.editor_options(), journal, allow_live=allow_live)
+            editor_kwargs = {"catalog_archive": output} if cell["method"] == "codex" else {}
+            editor = editor_type(config.editor_options(), journal, allow_live=allow_live, **editor_kwargs)
             selected = run_editor(broker.dev, initial, editor)
         else:
             selected = run_search(
@@ -260,6 +261,10 @@ def run_experiment(config, fixtures, output, *, allow_live=False):
             launch_bounds["sum_of_cli_api_equivalent_thresholds_usd"] = (
                 max_launches * options.max_api_equivalent_usd_per_call
             )
+        else:
+            catalog = stage_model_catalog(options, output)
+            if catalog is not None:
+                launch_bounds["model_catalog"] = catalog
     _exclusive_json(output / "experiment.json", {
         "schema_version": 1, "config": config_data, "config_sha256": config_hash,
         "cells": cells, "python_version": platform.python_version(), "numpy_version": np.__version__,
@@ -293,7 +298,7 @@ def run_experiment(config, fixtures, output, *, allow_live=False):
                     try:
                         if condition_error is not None:
                             raise condition_error
-                        _run_cell(config, cell, journal, task, policy, transform, allow_live=allow_live)
+                        _run_cell(config, cell, journal, task, policy, transform, allow_live=allow_live, output=output)
                     except Exception as error:
                         journal.append("run_failed", error_type=type(error).__name__, reason=str(error))
                         failed += 1

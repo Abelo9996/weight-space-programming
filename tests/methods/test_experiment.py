@@ -1,4 +1,5 @@
 from dataclasses import replace
+from hashlib import sha256
 import json
 
 import numpy as np
@@ -132,13 +133,20 @@ def test_codex_edit_experiment_keeps_budget_and_stops_on_hard_cli_failure(tmp_pa
     monkeypatch.setattr(experiment, "load_task", stub_task)
     monkeypatch.setattr(broker, "evaluate_split", stub_score)
     launches = []
+    launch_catalogs = []
     operation = {"op": "shift_bias", "layer": "fc0", "neuron": 0, "shift": 0.5}
+    model = {"slug": "gpt-6.2-sol", "tool_mode": "code_mode_only", "other_field": {"setting": [7, "kept"]}}
+    model_source = tmp_path / "local_model_descriptor.json"
+    model_source.write_text(json.dumps(model))
+    source_hash = sha256(model_source.read_bytes()).hexdigest()
 
     def invoke(command, *, prompt, **kwargs):
         if command[1] == "--version":
             return ProcessResult("codex-cli 0.169.0", "", 0, None)
         if command[1] == "login":
             return ProcessResult("", "Logged in using ChatGPT", 0, None)
+        catalog_flag = next(flag for flag in command if flag.startswith("model_catalog_json="))
+        launch_catalogs.append(json.loads(catalog_flag.split("=", 1)[1]))
         data = json.loads(prompt)
         launches.append(data)
         if hard_failure:
@@ -146,9 +154,9 @@ def test_codex_edit_experiment_keeps_budget_and_stops_on_hard_cli_failure(tmp_pa
         probe = len(data["history"]) == 1
         response = {"action": "probe", "ops": [operation]} if probe else {"action": "select", "candidate_id": 1}
         events = [
-            {"type": "thread.started", "thread_id": "mock-experiment"},
+            {"type": "thread.started", "thread_id": "019ac000-0000-7000-8000-000000000001"},
             {"type": "turn.started"},
-            {"type": "item.completed", "item": {"id": "item0", "type": "agent_message", "text": json.dumps(response)}},
+            {"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": json.dumps(response)}},
             {"type": "turn.completed", "usage": {
                 "input_tokens": 1200, "cached_input_tokens": 0, "output_tokens": 10,
                 "reasoning_output_tokens": 0,
@@ -160,6 +168,7 @@ def test_codex_edit_experiment_keeps_budget_and_stops_on_hard_cli_failure(tmp_pa
     settings = config(methods=("codex", "random"), candidate_cap=2, editor={
         "model": "gpt-6.2-sol", "cli_version": "codex-cli 0.169.0",
         "billing_assumption": "subscription_only", "max_calls": 2,
+        "model_catalog_source": str(model_source), "model_catalog_source_sha256": source_hash,
     })
     output = tmp_path / "codex"
     with pytest.raises(ValueError, match="allow-live-editor"):
@@ -167,6 +176,14 @@ def test_codex_edit_experiment_keeps_budget_and_stops_on_hard_cli_failure(tmp_pa
     result = experiment.run_experiment(settings, tmp_path, output, allow_live=True)
     manifest = json.loads((output / "experiment.json").read_text())
     bounds = manifest["live_editor_launch_bounds"]
+    catalog = bounds["model_catalog"]
+    archive = output / catalog["catalog_file"]
+    assert sha256(archive.read_bytes()).hexdigest() == catalog["catalog_sha256"]
+    assert json.loads(archive.read_text()) == {"models": [{**model, "tool_mode": "direct"}]}
+    assert (output / catalog["source_file"]).read_bytes() == model_source.read_bytes()
+    assert catalog["source_sha256"] == source_hash
+    assert launch_catalogs and set(launch_catalogs) == {str(archive.resolve())}
+    model_source.unlink()
     assert bounds["editor_cli_launches_upper_bound"] == 4
     assert "sum_of_cli_api_equivalent_thresholds_usd" not in bounds
     rows = [
@@ -193,6 +210,9 @@ def test_codex_edit_experiment_keeps_budget_and_stops_on_hard_cli_failure(tmp_pa
         assert all("heldout" not in json.dumps(data) for data in launches)
         assert summary["counts"]["completed"] == 4
         assert any(entry["comparison"] == "editor_minus_search" for entry in summary["heldout_comparisons"])
+    archive.write_text('{"models":[]}')
+    with pytest.raises(ValueError, match="pinned Direct-mode derivative"):
+        summarize(output)
 
 
 def test_bootstrap_samples_seed_pairs_instead_of_independent_arms():

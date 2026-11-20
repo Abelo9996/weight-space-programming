@@ -18,6 +18,7 @@ USAGE = {
     "output_tokens": 15, "reasoning_output_tokens": 0,
 }
 SELECT = '{"action":"select","candidate_id":0}'
+THREAD = "019ac000-0000-7000-8000-000000000001"
 
 
 class Journal:
@@ -32,7 +33,7 @@ class Journal:
 
 def stream(response=SELECT, *, extras=(), usage=USAGE, thread_fields=None):
     events = [
-        {"type": "thread.started", "thread_id": "fixture-thread", **(thread_fields or {})},
+        {"type": "thread.started", "thread_id": THREAD, **(thread_fields or {})},
         {"type": "turn.started"},
         *extras,
         {"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": response}},
@@ -102,6 +103,7 @@ def test_codex_native_command_and_audit_evidence(monkeypatch):
     assert preflight["model_evidence"] == turn["model_evidence"] == "requested_cli_model_only"
     assert turn["requested_model"] == MODEL and turn["reported_models"] == []
     assert turn["usage"] == USAGE and turn["actual_charge_usd"] is None
+    assert turn["thread_id"] == THREAD and turn["diagnostics"] == [] and turn["usage_excesses"] == {}
     assert turn["raw_stdout"] == raw
     assert turn["raw_stdout_sha256"] == sha256(raw.encode()).hexdigest()
     assert "private-override" not in str(journal.events)
@@ -130,12 +132,13 @@ def test_codex_rejects_unpinned_version_or_non_subscription(monkeypatch, changed
     stream(extras=[{"type": "item.completed", "item": {"type": "file_change"}}]),
     stream(extras=[{"type": "item.completed", "item": {"type": "error"}}]),
     stream(thread_fields={"model": "different-model"}),
+    stream(thread_fields={"thread_id": "private-token"}),
     stream(usage={**USAGE, "output_tokens": True}),
     stream(usage={**USAGE, "reasoning_output_tokens": 16}),
     stream(usage={**USAGE, "input_tokens": 120_001}),
     stream(usage={**USAGE, "output_tokens": 4097}),
     stream(usage={**USAGE, "different_model_tokens": 9}),
-    ProcessResult(stream(), "Model changed private-token", 0, None),
+    ProcessResult(stream(), "Model changed sk-private-token", 0, None),
     ProcessResult(stream(), "", 0, None, invalid_utf8=True),
     ProcessResult(stream(), "", -9, "output_cap"),
     ProcessResult(stream(), "", 1, None),
@@ -152,6 +155,81 @@ def test_codex_rejects_tool_activity_usage_drift_and_unexpected_cli_output(monke
     assert turn["raw_stdout"] is None and turn["response"] is None
     assert len(turn["raw_stdout_sha256"]) == 64
     assert "private-token" not in str(journal.events)
+
+
+def test_codex_records_redacted_startup_diagnostics_and_independent_usage_excess(monkeypatch):
+    lines = stream(usage={**USAGE, "input_tokens": 181_919}).splitlines()
+    lines.insert(1, json.dumps({"type": "item.completed", "item": {
+        "type": "error", "id": "item_0",
+        "message": "Config warning: model rerouted from gpt-6.2-sol to gpt-6.2-astra (/Users/example/.codex/config.toml)",
+    }}))
+    raw = "\n".join(lines) + "\n"
+    stderr = "WARN failed to connect: HTTP 429 Authorization: Bearer private-secret default openai"
+    mock_cli(monkeypatch, iter([ProcessResult(raw, stderr, 0, None)]))
+    journal = Journal()
+    editor = CodexEditor(CodexOptions(**SETTINGS), journal, allow_live=True)
+    editor.preflight()
+    with pytest.raises(EditorError, match="unexpected diagnostics"):
+        editor.request("{}", call=1, attempt=1)
+    turn = journal.events[-1]
+    assert turn["thread_id"] == THREAD
+    assert turn["usage_excesses"] == {"input_tokens": {"observed": 181_919, "limit": 120_000}}
+    assert turn["diagnostics"] == [
+        {
+            "source": "item.completed:error", "redacted": True, "truncated": False,
+            "preview": "Config warning: model rerouted from gpt-6.2-sol to gpt-6.2-astra ([home path redacted])",
+        },
+        {
+            "source": "stderr", "redacted": True, "truncated": False,
+            "preview": "WARN failed to connect: HTTP 429 [credential details redacted]",
+        },
+    ]
+    assert turn["raw_stdout"] is None and turn["raw_stderr"] is None
+    assert turn["raw_stdout_sha256"] == sha256(raw.encode()).hexdigest()
+    assert turn["raw_stderr_sha256"] == sha256(stderr.encode()).hexdigest()
+    assert not any(word in str(turn["diagnostics"]) for word in (
+        "private-secret", "/Users/example", "default openai",
+    ))
+
+
+def test_codex_diagnostic_previews_bound_payloads_and_exclude_tool_details():
+    message = "Unexpected response " + "sk-private-secret " * 1000
+    events = [
+        {"type": "item.completed", "item": {"type": "command_execution", "message": message}},
+        *({"type": "turn.failed", "error": {"message": message}} for _ in range(20)),
+    ]
+    evidence = codex_editor._diagnostic_evidence(events, "\n".join([message] * 20))
+    assert len(evidence) == 16
+    assert [entry["source"] for entry in evidence] == ["turn.failed"] * 8 + ["stderr"] * 8
+    assert all(
+        entry["preview"].startswith("Unexpected response [credential redacted]")
+        and len(entry["preview"]) == 512 and entry["redacted"] and entry["truncated"]
+        and "private-secret" not in entry["preview"]
+        for entry in evidence
+    )
+
+
+@pytest.mark.parametrize(("text", "private_value"), [
+    ("Warning: OPENAI_API_KEY=example-private-value", "example-private-value"),
+    ('Warning: {"CODEX_ACCESS_TOKEN":"example-private-value"}', "example-private-value"),
+    ("Warning: oauth_code=example-private-value", "example-private-value"),
+    ("Warning: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmb28ifQ.testSignature", "testSignature"),
+    ("Warning: sk-proj-example-private-value", "example-private-value"),
+    ("Warning: AbCdEfGhIjKlMnOpQrStUv56789012", "AbCdEfGhIjKlMnOpQrStUv56789012"),
+    ("Warning: access to /home/private-user/.codex was denied", "private-user"),
+    ("Warning: https://example.test/api?secret-example=private-value", "private-value"),
+])
+def test_codex_diagnostics_redact_recognizable_private_values(text, private_value):
+    result = codex_editor._diagnostic_preview(text)
+    assert result["redacted"] and result["preview"].startswith("Warning: ")
+    assert private_value not in result["preview"]
+
+
+def test_codex_diagnostic_keeps_unrecognized_warning_explanation():
+    message = "Warning: Experimental posture resolved to an unsupported enforcement mode"
+    assert codex_editor._diagnostic_preview(message) == {
+        "preview": message, "redacted": False, "truncated": False,
+    }
 
 
 @pytest.mark.parametrize("proposal", [
@@ -176,6 +254,45 @@ def test_codex_proposal_failure_is_separate_from_stream_failure(monkeypatch, pro
 def test_codex_requires_live_opt_in():
     with pytest.raises(EditorError, match="live opt-in"):
         CodexEditor(CodexOptions(**SETTINGS), Journal())
+
+
+def test_model_catalog_must_match_pin_and_selected_model(tmp_path):
+    source = tmp_path / "source.json"
+    output = tmp_path / "archive"
+    output.mkdir()
+    source.write_text('{"slug":"wrong-model","tool_mode":"code_mode_only"}')
+    settings = {**SETTINGS, "model_catalog_source": str(source)}
+    with pytest.raises(ValueError, match="pin the source"):
+        CodexOptions(**settings)
+    with pytest.raises(ValueError, match="differs from the configured pin"):
+        codex_editor.stage_model_catalog(CodexOptions(**settings, model_catalog_source_sha256="0" * 64), output)
+    with pytest.raises(ValueError, match="only the configured model entry"):
+        codex_editor.stage_model_catalog(
+            CodexOptions(**settings, model_catalog_source_sha256=sha256(source.read_bytes()).hexdigest()), output,
+        )
+    assert not list(output.iterdir())
+
+
+def test_catalog_archive_drift_fails_before_launch(tmp_path, monkeypatch):
+    source = tmp_path / "source.json"
+    source.write_text('{"slug":"gpt-6.2-sol","tool_mode":"code_mode_only"}')
+    options = CodexOptions(
+        **SETTINGS, model_catalog_source=str(source), model_catalog_source_sha256=sha256(source.read_bytes()).hexdigest(),
+    )
+    output = tmp_path / "archive"
+    output.mkdir()
+    archived = codex_editor.stage_model_catalog(options, output)
+    assert archived["tool_mode"] == "direct"
+    launches = mock_cli(monkeypatch, iter([]))
+    journal = Journal()
+    editor = CodexEditor(options, journal, allow_live=True, catalog_archive=output)
+    editor.preflight()
+    assert journal.events[-1]["model_catalog"] == archived
+    (output / archived["catalog_file"]).write_text('{"models":[]}')
+    with pytest.raises(EditorError, match="pinned Direct-mode derivative"):
+        editor.request("{}", call=1, attempt=1)
+    assert not launches
+    assert journal.events[-1]["error_type"] == "model_catalog"
 
 
 def test_process_reports_invalid_utf8_and_hashes_the_original_capture(tmp_path):
