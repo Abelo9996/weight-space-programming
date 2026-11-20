@@ -16,7 +16,9 @@ dependencies = ["numpy>=1.26"]
 [project.optional-dependencies]
 transforms = ["torch>=2.7"]
 prepare = ["torch>=2.7"]
-dev = ["pytest>=8", "build>=1.2", "torch>=2.7"]
+reading = ["torch>=2.7"]
+reading-baseline = ["torch>=2.7", "scikit-learn>=1.6"]
+dev = ["pytest>=8", "build>=1.2", "torch>=2.7", "scikit-learn>=1.6"]
 
 [project.scripts]
 weightspace = "weightspace.cli:main"

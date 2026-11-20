@@ -2,7 +2,7 @@
 
 Does a language-model editor repair the same policy equally well when its weights are rearranged without changing its starting function? Does it beat search when both use the same edit primitives and policy-evaluation limits?
 
-This research package pairs equivalent policy checkpoints, runs search baselines and optional language-model editors, and evaluates selected edits on held-out starts. It also includes PyTorch transforms and a reproducible Small CNN Zoo fixture check for a separate study of weight reading. The fixture checks validate the transforms and model loader. The CNN Zoo reading comparison is a research protocol described in the documentation.
+This research package pairs equivalent policy checkpoints, runs search baselines and optional language-model editors, and evaluates selected edits on held-out starts. It also provides CNN accuracy readers, a train-only layer-statistics baseline, and checked PyTorch transforms for ReLU and tanh networks. The reading workflow supports offline planning before funded API runs.
 
 ## Run a CPU smoke test
 
@@ -26,7 +26,8 @@ The base package uses NumPy. Use `pip install -e '.[prepare,transforms]'` for ex
 - [Policy repair](docs/policy-repair.md) explains task preparation, search and editor runs, budget units, and how to read held-out results.
 - [Offline policy repair pilot](results/baseline-pilot-2026-11-19/) reports three CPU tasks with paired search baselines, full event data, and replay instructions.
 - [Weight transforms](docs/transforms.md) documents the PyTorch API, numerical checks, and shuffle control.
-- [Small CNN Zoo](docs/cnn-zoo.md) documents optional fixture acquisition and the proposed reading comparison.
+- [CNN accuracy reading](docs/cnn-reading.md) explains labeled panels, API planning, prediction scoring, and the statistics baseline.
+- [Small CNN Zoo](docs/cnn-zoo.md) documents optional fixture acquisition, source metadata, and the larger benchmark protocol.
 - [Related work and attribution](docs/related-work.md) lists relevant precedent and licenses.
 - [Contributing](CONTRIBUTING.md) describes how to share changes and reproducible research outputs.
 

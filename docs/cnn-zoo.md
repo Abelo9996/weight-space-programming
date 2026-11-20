@@ -23,6 +23,8 @@ The loader uses the release's HWIO convolution and IO dense layout, three stride
 
 ## Proposed reader comparison
 
+The implemented [reading workflow](cnn-reading.md) supports manifest-based API evaluation, a train-only layer-statistics baseline, and offline planning. A larger benchmark still requires a defined train/test panel and funded runs.
+
 Predict held-out test accuracy from serialized classifier weights. Sample eligible final checkpoints from the target split and group linked checkpoints by training run before splitting. Keep labels, checkpoint IDs, and any in-context examples for held-out checkpoints out of prompts. Check that the serialization precision preserves the symmetry to the stated numerical tolerance. Collect fresh predictions for original weights, equivalent weights, and a verified function-changing control.
 
 Report Kendall's tau for accuracy prediction separately from representation sensitivity. For numeric predictions, compare the discrepancy between original and transformed predictions to discrepancy across fresh repeats of the same condition. Bootstrap at the network level and report ReLU and tanh subsets separately. Constant predictions can appear invariant, so report predictive accuracy alongside stability.

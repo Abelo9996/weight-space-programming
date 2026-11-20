@@ -1,4 +1,4 @@
-"""Command line for preparing, running and summarizing policy experiments."""
+"""Command line for weight editing and reading experiments."""
 
 import argparse
 import json
@@ -7,6 +7,7 @@ import sys
 
 from .analysis import summarize
 from .experiment import load_config, run_experiment
+from .readers.cli import add_commands, dispatch
 from .tasks import TASKS, prepare_task
 
 
@@ -30,6 +31,7 @@ def _parser():
     summary.add_argument("--output", type=Path)
     summary.add_argument("--bootstrap-replicates", type=int, default=2000)
     summary.add_argument("--bootstrap-seed", type=int, default=20261119)
+    add_commands(commands)
     return parser
 
 
@@ -37,6 +39,7 @@ def main(argv=None):
     parser = _parser()
     args = parser.parse_args(argv)
     output_file = None
+    exit_code = 0
     try:
         if args.command == "prepare":
             result = {task: str(prepare_task(args.output, task, args.seed)) for task in dict.fromkeys(args.task)}
@@ -44,6 +47,9 @@ def main(argv=None):
             config = load_config(args.config)
             fixtures = args.fixtures if args.fixtures is not None else args.config.parent / config.fixtures
             result = run_experiment(config, fixtures, args.output, allow_live=args.allow_live_editor)
+            exit_code = int(result["failed"] > 0)
+        elif args.command == "reading":
+            result, output_file, exit_code = dispatch(args)
         else:
             result = summarize(
                 args.input, bootstrap_replicates=args.bootstrap_replicates, bootstrap_seed=args.bootstrap_seed,
@@ -57,4 +63,4 @@ def main(argv=None):
                 handle.write(rendered)
     except (ImportError, OSError, RuntimeError, TypeError, ValueError) as error:
         parser.exit(2, f"weightspace: {error}\n")
-    return int(args.command == "run" and result["failed"] > 0)
+    return exit_code
