@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "fixtures": [
+    {"fixture_seed": 202611201, "run_seed": 61},
+    {"fixture_seed": 202611202, "run_seed": 67},
+    {"fixture_seed": 202611203, "run_seed": 71},
+    {"fixture_seed": 202611204, "run_seed": 73},
+    {"fixture_seed": 202611205, "run_seed": 79}
+  ],
+  "experiment": {
+    "phase": "study",
+    "fixture_source": "generated",
+    "tasks": ["TR02-CTRL-002"],
+    "conditions": ["original", "permutation_relu_scale"],
+    "methods": ["no_edit", "compound_random", "compound_greedy", "compound_es", "velocity_controller", "codex"],
+    "candidate_cap": 2,
+    "dev_per_region": 8,
+    "heldout_per_region": 100,
+    "es_offspring": 4,
+    "edit_limits": {
+      "max_changed_fraction": 0.04,
+      "max_operations": 16,
+      "min_scale": 0.25,
+      "max_scale": 4.0,
+      "max_bias_shift": 4.0,
+      "max_rank_alpha": 4.0,
+      "max_rank_vector": 1.0
+    },
+    "editor": {
+      "model": "gpt-6.2-sol",
+      "cli_version": "codex-cli 0.169.0",
+      "effort": "low",
+      "max_calls": 2,
+      "retries": 0,
+      "timeout_seconds": 90,
+      "max_output_bytes": 131072,
+      "max_observed_input_tokens": 120000,
+      "max_observed_output_tokens": 8192,
+      "billing_assumption": "subscription_only",
+      "model_catalog_source_sha256": "283fb905596385efe549dd7940aa38b04d26f0a8b18c2c7d5e91d775c141a776"
+    }
+  },
+  "model_catalog_sha256": "deb4fa7633b8884d179768ec232effea7f03348448a918054239988d060b64cf",
+  "max_native_launches": 20,
+  "bootstrap": {"replicates": 10000, "seed": 20261120}
+}

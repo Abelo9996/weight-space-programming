@@ -15,8 +15,9 @@ from .codex_editor import CodexEditor, CodexOptions, stage_model_catalog
 from .editors import ClaudeEditor, ClaudeOptions, EditorError, InvalidProposal, run_editor
 from .edits import EditLimits
 from .policies import forward, policy_digest
-from .search import EDITOR_METHODS, METHODS, run_search
+from .search import EDITOR_METHODS, METHODS, VELOCITY_CONTROLLER, run_search
 from .tasks import FIXTURE_FORMAT, TASKS, load_task
+from .velocity_controller import VELOCITY_CONTROLLER_TASK, run_velocity_controller
 
 
 CONDITIONS = ("original", "permutation", "relu_scale", "permutation_relu_scale")
@@ -59,6 +60,8 @@ class ExperimentConfig:
             object.__setattr__(self, name, tuple(values))
         if "original" not in self.conditions:
             raise ValueError("conditions must include the original checkpoint")
+        if VELOCITY_CONTROLLER in self.methods and self.tasks != (VELOCITY_CONTROLLER_TASK,):
+            raise ValueError(f"velocity_controller requires {VELOCITY_CONTROLLER_TASK}")
         if (
             not isinstance(self.seeds, (tuple, list)) or not self.seeds
             or any(type(seed) is not int or not 0 <= seed < 2**32 for seed in self.seeds)
@@ -208,6 +211,8 @@ def _run_cell(config, cell, journal, task, policy, transform, *, allow_live, out
             editor_kwargs = {"catalog_archive": output} if cell["method"] == "codex" else {}
             editor = editor_type(config.editor_options(), journal, allow_live=allow_live, **editor_kwargs)
             selected = run_editor(broker.dev, initial, editor)
+        elif cell["method"] == VELOCITY_CONTROLLER:
+            selected = run_velocity_controller(broker.dev, initial)
         else:
             selected = run_search(
                 cell["method"], broker.dev, initial, cell["seed"], offspring=config.es_offspring,
