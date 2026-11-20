@@ -1,0 +1,13 @@
+{
+  "phase": "pilot",
+  "fixtures": "fixtures",
+  "fixture_source": "generated",
+  "fixture_seed": 90217,
+  "tasks": ["TR02-CTRL-002", "TR02-CTRL-003", "TR02-CTRL-004"],
+  "seeds": [41, 43, 47, 53, 59],
+  "conditions": ["original", "permutation_relu_scale"],
+  "methods": ["no_edit", "random", "greedy", "es"],
+  "candidate_cap": 25,
+  "dev_per_region": 8,
+  "heldout_per_region": 100
+}

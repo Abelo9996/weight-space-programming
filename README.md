@@ -24,6 +24,7 @@ The base package uses NumPy. Use `pip install -e '.[prepare,transforms]'` for ex
 ## Experiments and reference material
 
 - [Policy repair](docs/policy-repair.md) explains task preparation, search and editor runs, budget units, and how to read held-out results.
+- [Offline policy repair pilot](results/baseline-pilot-2026-11-19/) reports three CPU tasks with paired search baselines, full event data, and replay instructions.
 - [Weight transforms](docs/transforms.md) documents the PyTorch API, numerical checks, and shuffle control.
 - [Small CNN Zoo](docs/cnn-zoo.md) documents optional fixture acquisition and the proposed reading comparison.
 - [Related work and attribution](docs/related-work.md) lists relevant precedent and licenses.

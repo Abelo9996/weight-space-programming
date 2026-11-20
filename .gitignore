@@ -19,6 +19,18 @@
 !/scripts/
 /scripts/*
 !/scripts/fetch_cnn_zoo_fixture.py
+!/scripts/export_baseline_results.py
+!/scripts/plot_baseline_results.py
+!/results/
+/results/*
+!/results/baseline-pilot-2026-11-19/
+/results/baseline-pilot-2026-11-19/*
+!/results/baseline-pilot-2026-11-19/README.md
+!/results/baseline-pilot-2026-11-19/cells.csv
+!/results/baseline-pilot-2026-11-19/config.json
+!/results/baseline-pilot-2026-11-19/heldout-objective.svg
+!/results/baseline-pilot-2026-11-19/manifest.json
+!/results/baseline-pilot-2026-11-19/summary.json
 !/src/
 /src/*
 !/src/weightspace/
@@ -55,3 +67,4 @@ htmlcov/
 *.pth
 *.safetensors
 *.pdf
+!/results/baseline-pilot-2026-11-19/events.jsonl

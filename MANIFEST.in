@@ -1,5 +1,13 @@
 include CITATION.cff CONTRIBUTING.md
 include scripts/fetch_cnn_zoo_fixture.py
+include scripts/export_baseline_results.py scripts/plot_baseline_results.py
+include results/baseline-pilot-2026-11-19/README.md
+include results/baseline-pilot-2026-11-19/cells.csv
+include results/baseline-pilot-2026-11-19/config.json
+include results/baseline-pilot-2026-11-19/events.jsonl
+include results/baseline-pilot-2026-11-19/heldout-objective.svg
+include results/baseline-pilot-2026-11-19/manifest.json
+include results/baseline-pilot-2026-11-19/summary.json
 recursive-include docs *.md
 recursive-include examples *.json
 recursive-include tests *.py
