@@ -25,6 +25,7 @@ The base package uses NumPy. Use `pip install -e '.[prepare,transforms]'` for ex
 
 - [Policy repair](docs/policy-repair.md) explains task preparation, search and editor runs, budget units, and how to read held-out results.
 - [Offline policy repair pilot](results/baseline-pilot-2026-11-19/) reports three CPU tasks with paired search baselines, full event data, and replay instructions.
+- [Five-fixture MountainCar comparison](results/mountaincar-panel-2026-11-20/) reports Codex, compound search, and an analytic velocity controller under a shared policy-evaluation budget, with fixed-recipe replay.
 - [Weight transforms](docs/transforms.md) documents the PyTorch API, numerical checks, and shuffle control.
 - [CNN accuracy reading](docs/cnn-reading.md) explains labeled panels, API planning, prediction scoring, and the statistics baseline.
 - [Small CNN Zoo](docs/cnn-zoo.md) documents optional fixture acquisition, source metadata, and the larger benchmark protocol.

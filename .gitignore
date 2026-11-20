@@ -20,6 +20,7 @@
 /scripts/*
 !/scripts/fetch_cnn_zoo_fixture.py
 !/scripts/export_baseline_results.py
+!/scripts/export_mountaincar_panel.py
 !/scripts/plot_baseline_results.py
 !/results/
 /results/*
@@ -31,6 +32,14 @@
 !/results/baseline-pilot-2026-11-19/heldout-objective.svg
 !/results/baseline-pilot-2026-11-19/manifest.json
 !/results/baseline-pilot-2026-11-19/summary.json
+!/results/mountaincar-panel-2026-11-20/
+/results/mountaincar-panel-2026-11-20/*
+!/results/mountaincar-panel-2026-11-20/README.md
+!/results/mountaincar-panel-2026-11-20/cells.csv
+!/results/mountaincar-panel-2026-11-20/config.json
+!/results/mountaincar-panel-2026-11-20/manifest.json
+!/results/mountaincar-panel-2026-11-20/protocol.md
+!/results/mountaincar-panel-2026-11-20/summary.json
 !/src/
 /src/*
 !/src/weightspace/
@@ -68,3 +77,4 @@ htmlcov/
 *.safetensors
 *.pdf
 !/results/baseline-pilot-2026-11-19/events.jsonl
+!/results/mountaincar-panel-2026-11-20/candidates.jsonl
